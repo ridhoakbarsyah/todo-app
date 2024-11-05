@@ -1,47 +1,85 @@
-import React, { useState } from "react";
-import "./App.css";
+import React, { useState, useEffect } from "react";
 
 const TodoList = () => {
   const [tasks, setTasks] = useState([]);
   const [newTask, setNewTask] = useState("");
   const [isEditing, setIsEditing] = useState(null);
 
-  // Add new task
-  const addTask = () => {
+  useEffect(() => {
+    fetchTasks();
+  }, []);
+
+  const fetchTasks = async () => {
+    const response = await fetch("http://localhost/backend/task.php");
+    const data = await response.json();
+    setTasks(data);
+  };
+
+  const addTask = async () => {
     if (newTask.trim()) {
-      setTasks([...tasks, { id: Date.now(), text: newTask, completed: false }]);
-      setNewTask("");
+      try {
+        const response = await fetch("http://localhost/backend/task.php", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ text: newTask }), // Send the task text
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const task = await response.json(); // Expect the backend to return the added task
+        setTasks((prevTasks) => [...prevTasks, task]); // Add the new task to the list
+        setNewTask(""); // Clear the input field
+      } catch (error) {
+        console.error("Failed to add task:", error);
+      }
+    } else {
+      alert("Task cannot be empty."); // Alert if the input is empty
     }
   };
 
-  // Toggle task completion
-  const toggleComplete = (id) => {
-    setTasks(tasks.map((task) => (task.id === id ? { ...task, completed: !task.completed } : task)));
+
+  const toggleComplete = async (id) => {
+    const task = tasks.find((task) => task.id === id);
+    const updatedTask = { ...task, completed: !task.completed };
+
+    await fetch("http://localhost/backend/task.php", {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(updatedTask),
+    });
+
+    setTasks(tasks.map((task) => (task.id === id ? updatedTask : task)));
   };
 
-  // Edit task
-  const editTask = (id, newText) => {
-    setTasks(tasks.map((task) => (task.id === id ? { ...task, text: newText } : task)));
+  const editTask = async (id, newText) => {
+    const updatedTask = { id, text: newText, completed: tasks.find((task) => task.id === id).completed };
+
+    await fetch("http://localhost/backend/task.php", {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(updatedTask),
+    });
+
+    setTasks(tasks.map((task) => (task.id === id ? updatedTask : task)));
     setIsEditing(null);
   };
 
-  // Delete task with confirmation alert
-  const deleteTask = (id) => {
-    const taskToDelete = tasks.find((task) => task.id === id);
-    const confirmDelete = window.confirm(`Are you sure you want to delete the task: "${taskToDelete.text}"?`);
-
+  const deleteTask = async (id) => {
+    const confirmDelete = window.confirm("Are you sure you want to delete this task?");
     if (confirmDelete) {
+      await fetch(`http://localhost/backend/task.php?id=${id}`, {
+        method: "DELETE",
+      });
       setTasks(tasks.filter((task) => task.id !== id));
     }
-  };
-
-  // Drag and Drop (if needed for future)
-  const handleDragEnd = (result) => {
-    if (!result.destination) return;
-    const items = Array.from(tasks);
-    const [reorderedItem] = items.splice(result.source.index, 1);
-    items.splice(result.destination.index, 0, reorderedItem);
-    setTasks(items);
   };
 
   return (
@@ -52,7 +90,7 @@ const TodoList = () => {
         <button onClick={addTask}>Add</button>
       </div>
       <ul>
-        {tasks.map((task, index) => (
+        {tasks.map((task) => (
           <li key={task.id} className={task.completed ? "completed" : ""}>
             {isEditing === task.id ? <input type="text" defaultValue={task.text} onBlur={(e) => editTask(task.id, e.target.value)} autoFocus /> : <span onClick={() => setIsEditing(task.id)}>{task.text}</span>}
             <input type="checkbox" checked={task.completed} onChange={() => toggleComplete(task.id)} />
